@@ -24,7 +24,7 @@ const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, onClose }) => 
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        setCountdown(3);
+        setCountdown(10);
         setCapturedImage(null);
         setError(null);
       }
