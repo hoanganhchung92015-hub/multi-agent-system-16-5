@@ -1,13 +1,15 @@
-// api/gemini.ts
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
-export const config = { runtime: 'edge' };
+export const config = {
+  runtime: 'edge', // Tốc độ phản hồi nhanh nhất trên Vercel
+  regions: ['sin1'], // Chỉ định server Singapore để gần Việt Nam nhất
+};
 
 const schema = {
   type: SchemaType.OBJECT,
   properties: {
-    tab1_quick: { type: SchemaType.STRING }, // Đáp án ngắn
-    tab2_detail: { type: SchemaType.STRING }, // Lời giải chia dòng
+    tab1_quick: { type: SchemaType.STRING },
+    tab2_detail: { type: SchemaType.STRING },
     tab3_quiz: {
       type: SchemaType.OBJECT,
       properties: {
@@ -27,24 +29,35 @@ export default async function (req: Request) {
 
   try {
     const { subject, prompt, image } = await req.json();
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+    
+    // Kiểm tra API Key sớm để tránh lãng phí tài nguyên
+    if (!process.env.GEMINI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Thiếu API Key trên Vercel' }), { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash", // Bản chuẩn, tốc độ cao nhất
-      generationConfig: { responseMimeType: "application/json", responseSchema: schema }
+      model: "gemini-1.5-flash", // Flash là model nhanh nhất và bền nhất hiện nay
+      generationConfig: { 
+        responseMimeType: "application/json", 
+        responseSchema: schema,
+        temperature: 0.1, // Giảm độ sáng tạo để AI trả về JSON chuẩn xác, không bị lỗi cấu trúc
+      }
     });
 
-    const contents = [{
-      role: "user",
-      parts: [
-        { text: `Bạn là chuyên gia môn ${subject}. Giải bài tập và tạo câu hỏi tương tự.` },
-        { text: prompt || "Giải bài tập trong ảnh" },
-        ...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image.split(",")[1] || image } }] : [])
-      ]
-    }];
+    const result = await model.generateContent([
+      { text: `Giải bài tập ${subject} chuyên nghiệp. Tab 1 đáp án, Tab 2 lời giải chi tiết (Latex), Tab 3 trắc nghiệm tương tự.` },
+      { text: prompt || "Giải bài tập" },
+      ...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image.split(",")[1] } }] : [])
+    ]);
 
-    const result = await model.generateContent({ contents });
-    return new Response(result.response.text(), { headers: { 'Content-Type': 'application/json' } });
+    return new Response(result.response.text(), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=3600' // Cho phép Vercel cache kết quả nếu cùng input
+      }
+    });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Hệ thống quá tải, vui lòng thử lại." }), { status: 500 });
   }
 }
