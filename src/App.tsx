@@ -5,8 +5,8 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 
 import { Subject } from './types';
-import { Layout } from './components/Layout';
-import { fetchAiSolution } from './services/geminiService';
+import { Layout } from '../components/Layout';
+import { fetchAiSolution } from '../services/geminiService';
 
 // Định nghĩa kiểu dữ liệu đồng bộ với API
 interface AiResponse {
