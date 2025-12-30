@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Subject, AiResponse } from './types';
-import { fetchAiSolution } from './services/geminiService';
+import { fetchAiSolution } from '../services/geminiService';
 import 'katex/dist/katex.min.css';
 
 export default function App() {
