@@ -5,8 +5,8 @@ import React from 'react';
 
 // CẤU HÌNH MODEL - Tối ưu cho tốc độ và hiệu năng
 const MODEL_CONFIG = {
-  TEXT: 'gemini-2.5-flash',
-  TTS: 'gemini-2.5-flash-tts',
+  TEXT: 'gemini-3-flash-view',
+  TTS: 'gemini-2.5-flash-view-tts',
   TIMEOUT: 15000 // 15s timeout
 };
 
