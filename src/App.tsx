@@ -1,210 +1,153 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { Subject, AiResponse } from './types';
+import { fetchAiSolution } from './services/geminiService';
 import 'katex/dist/katex.min.css';
 
-import { Subject } from './types';
-import { Layout } from '../components/Layout';
-import { fetchAiSolution } from '../services/geminiService';
-
-// Định nghĩa kiểu dữ liệu đồng bộ với API
-interface AiResponse {
-  tab1_quick: string;
-  tab2_detail: string;
-  tab3_quiz: {
-    question: string;
-    options: string[];
-    correctIndex: number;
-    explanation: string;
-  };
-}
-
-const App: React.FC = () => {
-  const [screen, setScreen] = useState<'HOME' | 'INPUT' | 'ANALYSIS'>('HOME');
+export default function App() {
+  const [screen, setScreen] = useState<'HOME' | 'INPUT' | 'ANALYSIS' | 'DIARY'>('HOME');
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [activeTab, setActiveTab] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
+  const [quizReady, setQuizReady] = useState(false);
   const [aiData, setAiData] = useState<AiResponse | null>(null);
-  const [quizReady, setQuizReady] = useState(false); // Trạng thái chờ cho Tab 3
-
+  
+  // States cho Input
   const [image, setImage] = useState<string | null>(null);
   const [voiceText, setVoiceText] = useState('');
   const [selectedQuizIndex, setSelectedQuizIndex] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- LOGIC XỬ LÝ CHÍNH ---
+  // --- XỬ LÝ GỬI DỮ LIỆU ---
   const handleRunAnalysis = useCallback(async () => {
     if (!selectedSubject || (!image && !voiceText)) return;
     
     setScreen('ANALYSIS');
     setLoading(true);
+    setQuizReady(false);
     setAiData(null);
-    setQuizReady(false); 
-    setSelectedQuizIndex(null);
     setActiveTab(1);
 
     try {
-      const data = await fetchAiSolution(selectedSubject, voiceText || "Giải bài tập trong ảnh", image || undefined);
+      const data = await fetchAiSolution(selectedSubject, voiceText || "Giải bài tập", image || undefined);
       setAiData(data);
-      
-      // Tạo độ trễ giả lập 2 giây cho Tab 3 tạo cảm giác "AI đang soạn bài"
-      setTimeout(() => {
-        setQuizReady(true);
-      }, 2000);
+      setLoading(false); // Tab 1, 2 hiện ngay
 
+      // Tab 3 trễ 2s tạo hiệu ứng "Chuyên gia đang trao đổi"
+      setTimeout(() => setQuizReady(true), 2000);
     } catch (error) {
-      console.error("Lỗi:", error);
-      alert("Hệ thống đang bận, vui lòng thử lại!");
+      alert("Lỗi kết nối chuyên gia!");
       setScreen('INPUT');
-    } finally {
       setLoading(false);
     }
   }, [selectedSubject, image, voiceText]);
 
-  // --- CAMERA & CHỤP ẢNH ---
+  // --- HÀM TIỆN ÍCH ---
   const startCamera = async () => {
     setImage(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) videoRef.current.srcObject = stream;
-    } catch (err) { alert("Không thể mở camera. Hãy cấp quyền!"); }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    if (videoRef.current) videoRef.current.srcObject = stream;
   };
 
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      canvasRef.current.width = videoRef.current.videoWidth;
-      canvasRef.current.height = videoRef.current.videoHeight;
-      ctx?.drawImage(videoRef.current, 0, 0);
-      setImage(canvasRef.current.toDataURL('image/jpeg'));
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream?.getTracks().forEach(track => track.stop());
+  const capture = () => {
+    const canvas = document.createElement('canvas');
+    if (videoRef.current) {
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+      setImage(canvas.toDataURL('image/jpeg'));
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
     }
   };
 
   return (
-    <Layout 
-      onBack={() => setScreen(screen === 'ANALYSIS' ? 'INPUT' : 'HOME')} 
-      title={selectedSubject || "GIÁO VIÊN AI"}
-    >
-      {/* 1. MÀN HÌNH CHỌN MÔN */}
+    <div className="max-w-md mx-auto min-h-screen bg-slate-50 font-sans pb-10">
+      {/* MÀN HÌNH CHỌN MÔN & NHẬT KÝ */}
       {screen === 'HOME' && (
-        <div className="grid grid-cols-2 gap-4 mt-10 p-4 animate-in fade-in zoom-in duration-300">
-          {[Subject.MATH, Subject.PHYSICS, Subject.CHEMISTRY].map(sub => (
-            <button 
-              key={sub} 
-              onClick={() => { setSelectedSubject(sub); setScreen('INPUT'); }}
-              className="bg-blue-600 aspect-square rounded-[2.5rem] text-white flex flex-col items-center justify-center shadow-xl active:scale-95 transition-all"
-            >
-              <span className="text-xl font-black uppercase tracking-widest">{sub}</span>
+        <div className="p-6 space-y-8">
+          <h1 className="text-2xl font-black text-blue-600 text-center mt-10">GIÁO VIÊN AI</h1>
+          <div className="grid grid-cols-2 gap-4">
+            {[Subject.MATH, Subject.PHYSICS, Subject.CHEMISTRY].map(sub => (
+              <button key={sub} onClick={() => { setSelectedSubject(sub); setScreen('INPUT'); }} className="bg-blue-600 aspect-square rounded-[2rem] text-white font-bold text-xl shadow-lg active:scale-95 transition-all uppercase">{sub}</button>
+            ))}
+            <button onClick={() => setScreen('DIARY')} className="bg-amber-400 aspect-square rounded-[2rem] text-white font-bold text-xl shadow-lg flex flex-col items-center justify-center">
+              <span>📓</span><span className="text-sm">NHẬT KÝ</span>
             </button>
-          ))}
+          </div>
         </div>
       )}
 
-      {/* 2. MÀN HÌNH NHẬP LIỆU */}
+      {/* MÀN HÌNH NHẬP LIỆU: CAMERA, TẢI ẢNH, MICRO */}
       {screen === 'INPUT' && (
-        <div className="p-4 space-y-6 animate-in slide-in-from-right duration-300">
-          <div className="w-full aspect-video bg-slate-900 rounded-[2rem] overflow-hidden relative border-4 border-white shadow-2xl">
-             {image ? <img src={image} className="w-full h-full object-contain" alt="capture" /> : <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />}
+        <div className="p-4 space-y-6">
+          <div className="flex justify-between items-center px-2">
+             <button onClick={() => setScreen('HOME')} className="text-slate-400 font-bold">← QUAY LẠI</button>
+             <span className="font-black text-blue-600 uppercase">{selectedSubject}</span>
           </div>
-          <div className="flex justify-center gap-4">
-            <button onClick={startCamera} className="p-5 bg-slate-100 rounded-full text-2xl shadow-md">📸</button>
-            <button onClick={capturePhoto} className="p-5 bg-blue-600 rounded-full text-2xl text-white shadow-lg shadow-blue-200">🎯</button>
-            <button onClick={handleRunAnalysis} className="px-10 py-5 bg-emerald-600 text-white rounded-full font-black shadow-lg uppercase tracking-wider">GIẢI NGAY</button>
+
+          <div className="w-full aspect-square bg-slate-900 rounded-[2.5rem] overflow-hidden relative shadow-2xl border-4 border-white">
+            {image ? <img src={image} className="w-full h-full object-contain" /> : <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />}
           </div>
-          <canvas ref={canvasRef} className="hidden" />
+
+          <div className="flex justify-around items-center bg-white p-6 rounded-[2rem] shadow-sm">
+            <button onClick={startCamera} className="flex flex-col items-center gap-1">
+              <span className="text-3xl">📸</span><span className="text-[10px] font-bold text-slate-400">CHỤP ẢNH</span>
+            </button>
+            <input type="file" ref={fileInputRef} hidden onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => setImage(reader.result as string);
+                reader.readAsDataURL(file);
+              }
+            }} />
+            <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center gap-1">
+              <span className="text-3xl">🖼️</span><span className="text-[10px] font-bold text-slate-400">TẢI ẢNH</span>
+            </button>
+            <button onClick={() => setVoiceText("Tính diện tích hình tròn...")} className="flex flex-col items-center gap-1">
+              <span className="text-3xl">🎤</span><span className="text-[10px] font-bold text-slate-400">GIỌNG NÓI</span>
+            </button>
+          </div>
+
+          <button onClick={image ? capture : handleRunAnalysis} className={`w-full py-5 rounded-full font-black text-white shadow-xl transition-all ${image ? 'bg-blue-600' : 'bg-emerald-600 animate-pulse'}`}>
+            {image ? "XÁC NHẬN ẢNH ✔" : "GỬI YÊU CẦU 🚀"}
+          </button>
         </div>
       )}
 
-      {/* 3. MÀN HÌNH KẾT QUẢ (3 TAB) */}
+      {/* MÀN HÌNH KẾT QUẢ (3 TAB) */}
       {screen === 'ANALYSIS' && (
         <div className="p-4 space-y-4">
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 shadow-inner">
-            {[
-              { id: 1, label: 'ĐÁP ÁN', icon: '⚡' },
-              { id: 2, label: 'LỜI GIẢI', icon: '📝' },
-              { id: 3, label: 'LUYỆN TẬP', icon: '🧠' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${activeTab === tab.id ? 'bg-white shadow-md text-blue-600' : 'text-slate-500'}`}
-              >
-                {tab.icon} {tab.label}
-              </button>
+          <div className="flex bg-slate-200/50 p-1.5 rounded-2xl gap-1">
+            {['ĐÁP ÁN', 'LỜI GIẢI', 'LUYỆN TẬP'].map((label, i) => (
+              <button key={i} onClick={() => setActiveTab((i+1) as any)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${activeTab === i+1 ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{label}</button>
             ))}
           </div>
 
-          <div className="bg-white rounded-[2.5rem] p-6 shadow-2xl border border-slate-50 min-h-[480px]">
+          <div className="bg-white rounded-[2.5rem] p-6 shadow-xl min-h-[400px]">
             {loading ? (
-              <div className="flex flex-col items-center justify-center pt-24 space-y-4">
-                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs font-black text-blue-500 animate-pulse uppercase">Chuyên gia đang giải bài...</p>
-              </div>
-            ) : aiData && (
+              <div className="text-center py-20 animate-pulse font-black text-blue-500 uppercase">Chuyên gia đang giải...</div>
+            ) : (
               <div className="animate-in fade-in duration-500">
-                {activeTab === 1 && (
-                  <div className="text-center py-10 space-y-6">
-                    <div className="text-4xl font-black text-blue-600 leading-tight">
-                      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {aiData.tab1_quick}
-                      </ReactMarkdown>
-                    </div>
-                    <div className="inline-block px-4 py-1 bg-blue-50 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-widest">Kết quả chính xác</div>
-                  </div>
-                )}
-
-                {activeTab === 2 && (
-                  <div className="prose prose-blue prose-sm max-w-none text-slate-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {aiData.tab2_detail}
-                    </ReactMarkdown>
-                  </div>
-                )}
-
+                {activeTab === 1 && <div className="text-4xl font-black text-center text-blue-600 py-10"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{aiData?.tab1_quick || ""}</ReactMarkdown></div>}
+                {activeTab === 2 && <div className="prose prose-sm"><ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{aiData?.tab2_detail || ""}</ReactMarkdown></div>}
                 {activeTab === 3 && (
-                  <div className="space-y-6">
+                  <div>
                     {!quizReady ? (
-                      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                        <div className="w-10 h-10 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin" />
-                        <p className="text-sm font-bold text-amber-600 italic">Đang soạn câu hỏi luyện tập...</p>
-                      </div>
+                      <div className="text-center py-20 italic text-amber-600 font-bold animate-bounce text-sm">Chuyên gia đang trao đổi...</div>
                     ) : (
-                      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-5 bg-amber-50 rounded-[2rem] border-2 border-amber-100 font-bold text-slate-800 mb-6">
-                          {aiData.tab3_quiz.question}
-                        </div>
-                        <div className="grid gap-3">
-                          {aiData.tab3_quiz.options.map((opt, idx) => {
-                            const isSelected = selectedQuizIndex === idx;
-                            const isCorrect = idx === aiData.tab3_quiz.correctIndex;
-                            let style = "border-slate-100 bg-slate-50/50";
-                            if (selectedQuizIndex !== null) {
-                              if (isCorrect) style = "border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20";
-                              else if (isSelected) style = "border-red-500 bg-red-50 text-red-700";
-                            }
-                            return (
-                              <button
-                                key={idx}
-                                disabled={selectedQuizIndex !== null}
-                                onClick={() => setSelectedQuizIndex(idx)}
-                                className={`w-full text-left p-5 rounded-2xl border-2 font-bold transition-all active:scale-95 ${style}`}
-                              >
-                                <span className="opacity-30 mr-2">{String.fromCharCode(65 + idx)}.</span> {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {selectedQuizIndex !== null && (
-                          <div className="mt-6 p-5 bg-blue-600 rounded-[2rem] text-white shadow-xl animate-in zoom-in-95">
-                            <p className="text-[10px] font-black uppercase opacity-60 mb-1">Giải thích từ chuyên gia</p>
-                            <p className="text-sm leading-relaxed">{aiData.tab3_quiz.explanation}</p>
-                          </div>
-                        )}
+                      <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                        <div className="p-4 bg-amber-50 rounded-2xl font-bold border-l-4 border-amber-400">{aiData?.tab3_quiz.question}</div>
+                        {aiData?.tab3_quiz.options.map((opt, idx) => (
+                          <button key={idx} onClick={() => setSelectedQuizIndex(idx)} className={`w-full text-left p-4 rounded-xl border-2 font-bold transition-all ${selectedQuizIndex === idx ? (idx === aiData.tab3_quiz.correctIndex ? 'border-emerald-500 bg-emerald-50' : 'border-red-500 bg-red-50') : 'border-slate-100'}`}>
+                            {String.fromCharCode(65+idx)}. {opt}
+                          </button>
+                        ))}
+                        {selectedQuizIndex !== null && <div className="p-4 bg-blue-50 rounded-xl text-xs leading-relaxed border border-blue-100 italic"><b>Giải thích:</b> {aiData?.tab3_quiz.explanation}</div>}
                       </div>
                     )}
                   </div>
@@ -212,10 +155,9 @@ const App: React.FC = () => {
               </div>
             )}
           </div>
+          <button onClick={() => setScreen('INPUT')} className="w-full py-4 text-slate-400 font-bold">THỬ CÂU KHÁC</button>
         </div>
       )}
-    </Layout>
+    </div>
   );
-};
-
-export default App;
+}
