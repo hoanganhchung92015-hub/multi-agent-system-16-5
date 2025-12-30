@@ -30,3 +30,4 @@ const handleRunAnalysis = useCallback(async () => {
     alert("Kết nối yếu, vui lòng thử lại!");
   }
 }, [selectedSubject, image, voiceText]);
+export default App;
