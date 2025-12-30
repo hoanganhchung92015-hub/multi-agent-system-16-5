@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Subject } from './types';
+import { Subject } from '../types';
 import { Layout } from '../components/Layout';
 // Import dịch vụ mới đã nâng cấp
 import { fetchAiSolution } from '../services/geminiService';
